@@ -7,7 +7,7 @@ untuk **Universitas Teknologi Bandung, Teknik Informatika**, diorkestrasikan men
 - **Saka-NLP**: `build_prompt`, `PromptTemplate`, `OutputFormatter`, `MultiAgentManager`, `parse_llm_output`
 - **pgvector**: Penyimpanan vektor performa tinggi di dalam PostgreSQL.
 - **Qwen SLM**: Small Language Model yang efisien dijalankan secara lokal via `llama-cpp-python`.
-- **Multi-Agent**: 5 agen spesialis akademik (Matematika, Sains, Bahasa, Informatika, Umum).
+- **Multi-Agent Dinamis**: Agen disimpan di pgvector dengan keywords routing dinamis!
 - **Cloud-Native**: Siap dideploy ke K3s dengan manifest Kubernetes.
 
 ## Struktur Proyek
@@ -21,8 +21,8 @@ untuk **Universitas Teknologi Bandung, Teknik Informatika**, diorkestrasikan men
 │       ├── main.py           # API endpoints + CORS
 │       ├── saka_utils.py     # build_prompt, PromptTemplate
 │       ├── inference.py      # LLM client
-│       ├── agents.py         # MultiAgentManager
-│       └── vector_store.py   # pgvector + embeddings
+│       ├── agents.py         # MultiAgentManager (dinamis dari pgvector!)
+│       └── vector_store.py   # pgvector + embeddings + Agent model
 ├── inference/          # Qwen GGUF inference
 │   ├── Dockerfile
 │   └── entrypoint.sh
@@ -36,33 +36,167 @@ untuk **Universitas Teknologi Bandung, Teknik Informatika**, diorkestrasikan men
 └── README.md
 ```
 
-## Cara Menjalankan (Docker Compose)
+---
+
+## Cara Instalasi & Menjalankan (Docker Compose)
+Ini adalah cara termudah untuk menjalankan proyek secara lokal!
+
+### Prasyarat
+Pastikan Anda sudah menginstall:
+- [Docker](https://www.docker.com/) dan [Docker Compose](https://docs.docker.com/compose/)
+
+### Langkah 1: Clone repository
+```bash
+git clone <repository-url>
+cd Orchestrating Private LLM Workloads on Kubernetes
+```
+
+### Langkah 2: Jalankan dengan Docker Compose
 ```bash
 docker-compose up --build
 ```
+Perintah ini akan:
+1. Build image untuk backend dan inference
+2. Pull image postgres-pgvector dan pgweb
+3. Menjalankan semua service secara otomatis!
 
-| Service     | URL                        | Keterangan   |
-| ----------- | -------------------------- | ------------ |
-| Frontend    | http://localhost:3000      | UI Mahasiswa |
-| Backend API | http://localhost:8080/docs | Swagger Docs |
-| PGWeb       | http://localhost:8081      | Database UI  |
-| Inference   | http://localhost:8000      | Qwen LLM API |
+### Langkah 3: Akses Aplikasi
+Setelah semua service berjalan, buka browser dan akses:
+
+| Service     | URL                        | Keterangan                  |
+| ----------- | -------------------------- | --------------------------- |
+| Frontend    | http://localhost:3000      | UI Mahasiswa                |
+| Backend API | http://localhost:8080/docs | Swagger Docs (Test API!)    |
+| PGWeb       | http://localhost:8081      | Database UI                 |
+| Inference   | http://localhost:8000      | Qwen LLM API (OpenAI-compat)|
+
+---
+
+## API Endpoints
+Gunakan **Swagger Docs** di http://localhost:8080/docs untuk mencoba semua endpoint secara interaktif!
+
+### Manajemen Agen
+- **POST /agents**: Buat agen baru (dengan keywords opsional!)
+  ```json
+  {
+    "name": "biology_expert",
+    "role": "Guru Biologi",
+    "task": "Membantu menjawab soal biologi",
+    "keywords": ["biologi", "sel", "dna", "evolusi"]
+  }
+  ```
+- **GET /agents**: Lihat semua agen yang tersimpan di database
+- **GET /agents/{agent_name}**: Lihat detail agen tertentu
+
+### Ingest Dokumen
+- **POST /ingest**: Tambah dokumen ke knowledge base (bisa spesifik untuk agen tertentu!)
+  ```json
+  {
+    "content": "Materi Matematika: Rumus Luas Lingkaran adalah πr²...",
+    "metadata": {"mata_kuliah": "Matematika Dasar", "semester": 1},
+    "agent_name": "math_expert" // Opsional: hanya untuk agen math_expert
+  }
+  ```
+
+### Query RAG
+- **POST /query**: Query RAG umum (tidak spesifik agen)
+- **POST /agent/query**: Query ke agen spesialis (otomatis routing berdasarkan keywords!)
+
+---
+
+## Cara Instalasi K3s
+Berikut adalah langkah-langkah untuk menginstall K3s (Kubernetes Ringkas) di server Anda:
+
+### Instalasi K3s Server (Single Node)
+```bash
+# Jalankan script instalasi K3s
+curl -sfL https://get.k3s.io | sh -
+
+# Verifikasi instalasi
+sudo k3s kubectl get nodes
+```
+
+### Instalasi K3s Agent (Multi Node - Opsional)
+Jika Anda ingin menambah node worker:
+```bash
+# Di server K3s server, dapatkan token
+sudo cat /var/lib/rancher/k3s/server/node-token
+
+# Di node worker, jalankan:
+curl -sfL https://get.k3s.io | K3S_URL=https://<SERVER_IP>:6443 K3S_TOKEN=<TOKEN> sh -
+```
+
+### Konfigurasi Kubectl (Untuk Akses dari Lokal)
+Untuk mengakses K3s dari mesin lokal Anda:
+```bash
+# Salin file kubeconfig dari server K3s
+sudo cat /etc/rancher/k3s/k3s.yaml
+
+# Simpan ke ~/.kube/config di mesin lokal Anda
+# Edit bagian server menjadi https://<SERVER_IP>:6443
+```
+
+---
 
 ## Cara Menjalankan di Kubernetes (K3s)
-```bash
-# Build & push image ke registry
-docker build -t your-registry/rag-backend:latest ./backend
-docker build -t your-registry/qwen-inference:latest ./inference
+Untuk deployment ke Kubernetes K3s:
 
-# Deploy
+### Prasyarat
+- K3s sudah terinstall (lihat bagian di atas!)
+- Docker registry untuk menyimpan image
+
+### Langkah 1: Build & Push Image
+```bash
+# Build image backend
+docker build -t your-registry/rag-backend:latest ./backend
+docker push your-registry/rag-backend:latest
+
+# Build image inference
+docker build -t your-registry/qwen-inference:latest ./inference
+docker push your-registry/qwen-inference:latest
+```
+
+### Langkah 2: Update Manifest Kubernetes
+Edit file di `infrastructure/` untuk mengganti image name sesuai registry Anda!
+
+### Langkah 3: Deploy ke K3s
+```bash
 kubectl apply -f infrastructure/
 ```
 
+---
+
+## Cara Update Proyek (Jika Ada Perubahan)
+Jika Anda mengupdate kode proyek atau menarik perubahan baru dari repository:
+
+### 1. Pull Perubahan Terbaru
+```bash
+git pull origin main
+```
+
+### 2. Restart Docker Compose
+Untuk menerapkan perubahan, rebuild dan restart service:
+```bash
+docker-compose down
+docker-compose up --build
+```
+
+### 3. Migrasi Database (Opsional)
+Jika ada perubahan pada model database (seperti menambah kolom baru):
+- Database di Docker Compose akan tetap menyimpan data Anda
+- `init_db()` di `main.py` akan otomatis membuat tabel baru jika belum ada
+- **Catatan**: Untuk perubahan schema yang kompleks, Anda perlu menjalankan migrasi manual
+
+---
+
 ## Demo Saka-NLP (Standalone)
+Untuk mencoba fitur Saka-NLP tanpa Docker:
 ```bash
 pip install git+https://github.com/Muhammad-Ikhwan-Fathulloh/Saka-NLP.git
 python backend/demo_saka_features.py
 ```
+
+---
 
 ## Kredit
 - **Saka-NLP**: [Muhammad-Ikhwan-Fathulloh/Saka-NLP](https://github.com/Muhammad-Ikhwan-Fathulloh/Saka-NLP)
