@@ -1,0 +1,68 @@
+services:
+  db:
+    image: ankane/pgvector:latest
+    container_name: pgvector_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydatabase
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d mydatabase"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgweb:
+    image: sosedoff/pgweb:latest
+    container_name: pgweb_ui
+    ports:
+      - "8081:8081"
+    environment:
+      DATABASE_URL: postgres://user:password@db:5432/mydatabase?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+
+  inference:
+    build:
+      context: ./inference
+    container_name: qwen_inference
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_URL: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q8_0.gguf"
+    volumes:
+      - models:/models
+
+  backend:
+    build:
+      context: ./backend
+    container_name: rag_backend
+    ports:
+      - "8080:8000"
+    environment:
+      DATABASE_URL: "postgresql://user:password@db:5432/mydatabase"
+      INFERENCE_URL: "http://inference:8000/v1"
+    depends_on:
+      db:
+        condition: service_healthy
+      inference:
+        condition: service_started
+
+  frontend:
+    image: nginx:alpine
+    container_name: sovereign_frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  models:
