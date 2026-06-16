@@ -1,14 +1,20 @@
 # Sovereign AI: Private RAG on Kubernetes
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-blue?logo=github)](https://github.com/Muhammad-Ikhwan-Fathulloh/Orchestrating-Private-LLM-Workloads-on-Kubernetes)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 Proyek ini mendemonstrasikan implementasi pipeline RAG (Retrieval-Augmented Generation) privat
 untuk **Universitas Teknologi Bandung, Teknik Informatika**, diorkestrasikan menggunakan Kubernetes (K3s).
 
+**Repository**: https://github.com/Muhammad-Ikhwan-Fathulloh/Orchestrating-Private-LLM-Workloads-on-Kubernetes
+
 ## Fitur Utama
 - **Saka-NLP**: `build_prompt`, `PromptTemplate`, `OutputFormatter`, `MultiAgentManager`, `parse_llm_output`
-- **pgvector**: Penyimpanan vektor performa tinggi di dalam PostgreSQL.
-- **Qwen SLM**: Small Language Model yang efisien dijalankan secara lokal via `llama-cpp-python`.
-- **Multi-Agent Dinamis**: Agen disimpan di pgvector dengan keywords routing dinamis!
-- **Cloud-Native**: Siap dideploy ke K3s dengan manifest Kubernetes.
+- **pgvector**: Penyimpanan vektor performa tinggi di dalam PostgreSQL
+- **Qwen SLM**: Small Language Model yang efisien dijalankan secara lokal via `llama-cpp-python` (Qwen2.5-1.5B dan Qwen2.5-3B)
+- **Multi-Agent Dinamis**: Agen disimpan di pgvector dengan keywords routing dan model spesifik per agent
+- **Perbandingan Model**: Bandingkan output dari kedua model Qwen secara langsung
+- **Cloud-Native**: Siap dideploy ke K3s dengan manifest Kubernetes
 
 ## Struktur Proyek
 ```
@@ -20,12 +26,13 @@ untuk **Universitas Teknologi Bandung, Teknik Informatika**, diorkestrasikan men
 │   └── app/
 │       ├── main.py           # API endpoints + CORS
 │       ├── saka_utils.py     # build_prompt, PromptTemplate
-│       ├── inference.py      # LLM client
-│       ├── agents.py         # MultiAgentManager (dinamis dari pgvector!)
+│       ├── inference.py      # LLM client (supports multiple models)
+│       ├── agents.py         # MultiAgentManager (dinamis dari pgvector)
 │       └── vector_store.py   # pgvector + embeddings + Agent model
-├── inference/          # Qwen GGUF inference
+├── inference/          # Qwen GGUF inference (FastAPI + llama-cpp-python)
 │   ├── Dockerfile
-│   └── entrypoint.sh
+│   ├── entrypoint.sh
+│   └── server.py
 ├── infrastructure/     # Kubernetes manifests
 │   ├── postgres-pgvector.yaml
 │   ├── inference.yaml
@@ -47,8 +54,8 @@ Pastikan Anda sudah menginstall:
 
 ### Langkah 1: Clone repository
 ```bash
-git clone <repository-url>
-cd Orchestrating Private LLM Workloads on Kubernetes
+git clone https://github.com/Muhammad-Ikhwan-Fathulloh/Orchestrating-Private-LLM-Workloads-on-Kubernetes.git
+cd Orchestrating-Private-LLM-Workloads-on-Kubernetes
 ```
 
 ### Langkah 2: Jalankan dengan Docker Compose
@@ -58,7 +65,8 @@ docker-compose up --build
 Perintah ini akan:
 1. Build image untuk backend dan inference
 2. Pull image postgres-pgvector dan pgweb
-3. Menjalankan semua service secara otomatis!
+3. Download model Qwen2.5-1.5B dan Qwen2.5-3B secara otomatis
+4. Menjalankan semua service secara otomatis!
 
 ### Langkah 3: Akses Aplikasi
 Setelah semua service berjalan, buka browser dan akses:
@@ -68,39 +76,7 @@ Setelah semua service berjalan, buka browser dan akses:
 | Frontend    | http://localhost:3000      | UI Mahasiswa                |
 | Backend API | http://localhost:8080/docs | Swagger Docs (Test API!)    |
 | PGWeb       | http://localhost:8081      | Database UI                 |
-| Inference   | http://localhost:8000      | Qwen LLM API (OpenAI-compat)|
-
----
-
-## API Endpoints
-Gunakan **Swagger Docs** di http://localhost:8080/docs untuk mencoba semua endpoint secara interaktif!
-
-### Manajemen Agen
-- **POST /agents**: Buat agen baru (dengan keywords opsional!)
-  ```json
-  {
-    "name": "biology_expert",
-    "role": "Guru Biologi",
-    "task": "Membantu menjawab soal biologi",
-    "keywords": ["biologi", "sel", "dna", "evolusi"]
-  }
-  ```
-- **GET /agents**: Lihat semua agen yang tersimpan di database
-- **GET /agents/{agent_name}**: Lihat detail agen tertentu
-
-### Ingest Dokumen
-- **POST /ingest**: Tambah dokumen ke knowledge base (bisa spesifik untuk agen tertentu!)
-  ```json
-  {
-    "content": "Materi Matematika: Rumus Luas Lingkaran adalah πr²...",
-    "metadata": {"mata_kuliah": "Matematika Dasar", "semester": 1},
-    "agent_name": "math_expert" // Opsional: hanya untuk agen math_expert
-  }
-  ```
-
-### Query RAG
-- **POST /query**: Query RAG umum (tidak spesifik agen)
-- **POST /agent/query**: Query ke agen spesialis (otomatis routing berdasarkan keywords!)
+| Inference   | http://localhost:8000/v1/models | List model yang tersedia |
 
 ---
 
@@ -142,7 +118,7 @@ sudo cat /etc/rancher/k3s/k3s.yaml
 Untuk deployment ke Kubernetes K3s:
 
 ### Prasyarat
-- K3s sudah terinstall (lihat bagian di atas!)
+- K3s sudah terinstall (lihat bagian di atas)
 - Docker registry untuk menyimpan image
 
 ### Langkah 1: Build & Push Image
@@ -163,6 +139,46 @@ Edit file di `infrastructure/` untuk mengganti image name sesuai registry Anda!
 ```bash
 kubectl apply -f infrastructure/
 ```
+
+---
+
+## API Endpoints
+Gunakan **Swagger Docs** di http://localhost:8080/docs untuk mencoba semua endpoint secara interaktif!
+
+### Manajemen Agen
+- **POST /agents**: Buat agen baru (dengan keywords dan model opsional!)
+  ```json
+  {
+    "name": "biology_expert",
+    "role": "Guru Biologi",
+    "task": "Membantu menjawab soal biologi",
+    "keywords": ["biologi", "sel", "dna", "evolusi"],
+    "model_name": "qwen2.5-3b-instruct"
+  }
+  ```
+- **GET /agents**: Lihat semua agen yang tersimpan di database beserta detailnya
+- **GET /agents/{agent_name}**: Lihat detail agen tertentu
+
+### Ingest Dokumen
+- **POST /ingest**: Tambah dokumen ke knowledge base (bisa spesifik untuk agen tertentu!)
+  ```json
+  {
+    "content": "Materi Matematika: Rumus Luas Lingkaran adalah πr²...",
+    "metadata": {"mata_kuliah": "Matematika Dasar", "semester": 1},
+    "agent_name": "math_expert" // Opsional: hanya untuk agen math_expert
+  }
+  ```
+
+### Query RAG
+- **POST /query**: Query RAG umum (bisa pilih model yang akan digunakan)
+- **POST /agent/query**: Query ke agen spesialis (otomatis routing berdasarkan keywords dan gunakan model agen!)
+- **POST /compare**: Bandingkan jawaban dari kedua model Qwen untuk pertanyaan yang sama!
+  ```json
+  {
+    "query": "Jelaskan apa itu algoritma sorting",
+    "context": "Opsional: konteks khusus jika ingin bypass pencarian"
+  }
+  ```
 
 ---
 
@@ -204,3 +220,9 @@ python backend/demo_saka_features.py
 - **pgweb**: [sosedoff/pgweb](https://sosedoff.github.io/pgweb/)
 - **K3s**: [k3s.io](https://k3s.io/)
 - **Qwen Model**: [Qwen/Qwen2.5-GGUF](https://huggingface.co/Qwen)
+
+---
+
+## Lisensi
+Proyek ini dilisensikan di bawah [MIT License](LICENSE). Lihat file LICENSE untuk informasi lebih detail.
+

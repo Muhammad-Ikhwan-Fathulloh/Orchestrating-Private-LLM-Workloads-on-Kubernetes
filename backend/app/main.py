@@ -13,7 +13,7 @@ from .vector_store import (
     get_agent_by_name,
     init_default_agents,
 )
-from .inference import generate_response, generate_response_with_agent
+from .inference import generate_response, generate_response_with_agent, compare_models
 from .agents import get_agent_manager, route_query, refresh_agent_manager
 
 # Saka-NLP imports
@@ -28,7 +28,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 
 @app.on_event("startup")
@@ -48,11 +47,13 @@ class DocumentRequest(BaseModel):
 class QueryRequest(BaseModel):
     query: str
     format: Optional[str] = "markdown"  # markdown, html, csv, table
+    model: Optional[str] = "qwen2.5-1.5b-instruct"  # Model to use
 
 
 class AgentQueryRequest(BaseModel):
     query: str
     format: Optional[str] = "markdown"
+    model: Optional[str] = None  # Optional: override agent's default model
 
 
 class CreateAgentRequest(BaseModel):
@@ -60,6 +61,12 @@ class CreateAgentRequest(BaseModel):
     role: str
     task: str
     keywords: Optional[List[str]] = None
+    model_name: Optional[str] = "qwen2.5-1.5b-instruct"  # Default model for this agent
+
+
+class CompareRequest(BaseModel):
+    query: str
+    context: Optional[str] = None
 
 
 # --- Endpoints ---
@@ -88,7 +95,7 @@ async def query_rag(req: QueryRequest):
     if not context_list:
         return {"answer": "Maaf, saya tidak menemukan informasi yang relevan di dokumen saya."}
 
-    answer = generate_response(req.query, context_text)
+    answer = generate_response(req.query, context_text, req.model)
 
     # Format context using Saka OutputFormatter
     formatted_context = OutputFormatter.format(context_list, req.format)
@@ -96,6 +103,7 @@ async def query_rag(req: QueryRequest):
     return {
         "query": req.query,
         "processed_query": processed_query,
+        "model": req.model,
         "context_formatted": formatted_context,
         "context_raw": context_list,
         "answer": answer,
@@ -114,21 +122,29 @@ async def agent_query(req: AgentQueryRequest):
     selected_agent_name = route_query(req.query)
 
     # Step 3: Generate specialist prompt & jawaban
-    answer = generate_response_with_agent(req.query, mgr, selected_agent_name)
+    agent_data = get_agent_by_name(selected_agent_name) if selected_agent_name else None
+    answer = generate_response_with_agent(req.query, mgr, selected_agent_name, req.model)
 
     return {
         "query": req.query,
         "routed_to": selected_agent_name,
+        "agent": agent_data,
         "router_prompt_preview": router_prompt[:300],
         "answer": answer,
     }
+
+
+@app.post("/compare")
+async def compare_models_endpoint(req: CompareRequest):
+    """Compare responses from both Qwen models."""
+    return compare_models(req.query, req.context)
 
 
 @app.post("/agents")
 async def create_agent_endpoint(req: CreateAgentRequest):
     """Create a new agent."""
     try:
-        agent_id = create_agent(req.name, req.role, req.task, req.keywords)
+        agent_id = create_agent(req.name, req.role, req.task, req.keywords, req.model_name)
         # Refresh agent manager to include new agent
         refresh_agent_manager()
         return {"status": "success", "agent_id": agent_id}
@@ -139,7 +155,6 @@ async def create_agent_endpoint(req: CreateAgentRequest):
 @app.get("/agents")
 async def list_agents_endpoint():
     """List semua agen spesialis yang tersedia."""
-    from .agents import refresh_agent_manager
     agents = list_agents()
     return {"agents": agents}
 

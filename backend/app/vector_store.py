@@ -21,6 +21,7 @@ class Agent(Base):
     role = Column(Text, nullable=False)  # Agent role (e.g., "Guru Matematika")
     task = Column(Text, nullable=False)  # Agent task description
     keywords = Column(JSON, nullable=True)  # List of keywords for routing
+    model_name = Column(Text, nullable=False, default="qwen2.5-1.5b-instruct")  # Model to use for this agent
 
 
 class Document(Base):
@@ -83,10 +84,10 @@ def search_similar_documents(query: str, limit: int = 3, agent_name: str = None)
         db.close()
 
 
-def create_agent(name: str, role: str, task: str, keywords: list = None) -> int:
+def create_agent(name: str, role: str, task: str, keywords: list = None, model_name: str = "qwen2.5-1.5b-instruct") -> int:
     db = SessionLocal()
     try:
-        db_agent = Agent(name=name, role=role, task=task, keywords=keywords)
+        db_agent = Agent(name=name, role=role, task=task, keywords=keywords, model_name=model_name)
         db.add(db_agent)
         db.commit()
         db.refresh(db_agent)
@@ -99,7 +100,7 @@ def list_agents() -> list:
     db = SessionLocal()
     try:
         agents = db.query(Agent).all()
-        return [{"id": a.id, "name": a.name, "role": a.role, "task": a.task, "keywords": a.keywords} for a in agents]
+        return [{"id": a.id, "name": a.name, "role": a.role, "task": a.task, "keywords": a.keywords, "model_name": a.model_name} for a in agents]
     finally:
         db.close()
 
@@ -109,7 +110,7 @@ def get_agent_by_name(name: str) -> dict:
     try:
         agent = db.query(Agent).filter(Agent.name == name).first()
         if agent:
-            return {"id": agent.id, "name": agent.name, "role": agent.role, "task": agent.task, "keywords": agent.keywords}
+            return {"id": agent.id, "name": agent.name, "role": agent.role, "task": agent.task, "keywords": agent.keywords, "model_name": agent.model_name}
         return None
     finally:
         db.close()
@@ -122,39 +123,44 @@ def init_default_agents():
             "math_expert",
             "Guru Matematika",
             "Membantu menjawab soal aljabar, kalkulus, statistik, dan geometri.",
-            ["matematika", "aljabar", "kalkulus", "statistik", "geometri", "persamaan", "integral", "turunan", "matriks", "hitung"]
+            ["matematika", "aljabar", "kalkulus", "statistik", "geometri", "persamaan", "integral", "turunan", "matriks", "hitung"],
+            "qwen2.5-3b-instruct"  # Use 3B for complex math
         ),
         (
             "science_expert",
             "Guru Fisika & Kimia",
             "Membantu menjawab soal mekanika, optik, termodinamika, dan reaksi kimia.",
-            ["fisika", "kimia", "gravitasi", "gaya", "energi", "reaksi", "mekanika", "optik", "termodinamika", "atom", "molekul"]
+            ["fisika", "kimia", "gravitasi", "gaya", "energi", "reaksi", "mekanika", "optik", "termodinamika", "atom", "molekul"],
+            "qwen2.5-3b-instruct"  # Use 3B for science
         ),
         (
             "language_expert",
             "Guru Bahasa Indonesia",
             "Membantu analisis sastra, tata bahasa, dan penulisan akademik.",
-            ["bahasa", "sastra", "puisi", "cerpen", "novel", "tata bahasa", "ejaan", "paragraf", "kalimat", "menulis"]
+            ["bahasa", "sastra", "puisi", "cerpen", "novel", "tata bahasa", "ejaan", "paragraf", "kalimat", "menulis"],
+            "qwen2.5-1.5b-instruct"  # Use 1.5B for language
         ),
         (
             "cs_expert",
             "Guru Informatika",
             "Membantu pemrograman, algoritma, struktur data, dan jaringan komputer.",
-            ["program", "algoritma", "kode", "python", "javascript", "java", "database", "jaringan", "komputer", "informatika"]
+            ["program", "algoritma", "kode", "python", "javascript", "java", "database", "jaringan", "komputer", "informatika"],
+            "qwen2.5-3b-instruct"  # Use 3B for CS
         ),
         (
             "general_academic",
             "Asisten Akademik Umum",
             "Membantu pertanyaan akademik umum yang tidak termasuk kategori di atas.",
-            []
+            [],
+            "qwen2.5-1.5b-instruct"  # Use 1.5B for general
         ),
     ]
     db = SessionLocal()
     try:
-        for name, role, task, keywords in default_agents:
+        for name, role, task, keywords, model_name in default_agents:
             existing = db.query(Agent).filter(Agent.name == name).first()
             if not existing:
-                db.add(Agent(name=name, role=role, task=task, keywords=keywords))
+                db.add(Agent(name=name, role=role, task=task, keywords=keywords, model_name=model_name))
         db.commit()
     finally:
         db.close()

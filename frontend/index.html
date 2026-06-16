@@ -36,6 +36,8 @@
         .status-offline { background: #e74c3c; }
         .footer { background: var(--utb-primary); color: rgba(255,255,255,.7); font-size: .8rem; }
         #loadingSpinner { display: none; }
+        .model-card { transition: all 0.2s; }
+        .model-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.1); }
     </style>
 </head>
 <body>
@@ -63,7 +65,7 @@
 <div class="container my-4">
     <div class="row g-4">
 
-        <!-- LEFT: Ingest Document -->
+        <!-- LEFT: Ingest Document & Agents -->
         <div class="col-lg-5">
             <!-- Ingest Card -->
             <div class="card mb-4">
@@ -72,6 +74,9 @@
                 </div>
                 <div class="card-body">
                     <textarea id="docContent" class="form-control mb-2" rows="5" placeholder="Tempel teks dokumen akademik di sini...&#10;&#10;Contoh: Dalam ilmu komputer, algoritma sorting adalah metode untuk mengurutkan elemen-elemen dalam sebuah array..."></textarea>
+                    <select id="docAgent" class="form-select mb-2">
+                        <option value="">Umum (semua agen)</option>
+                    </select>
                     <button class="btn btn-utb w-100" onclick="ingestDocument()">
                         <i class="bi bi-upload me-1"></i> Ingest ke pgvector
                     </button>
@@ -80,25 +85,17 @@
             </div>
 
             <!-- Agent Info Card -->
-            <div class="card">
+            <div class="card mb-4">
                 <div class="card-header bg-white text-dark">
                     <i class="bi bi-people-fill me-1"></i> Agen Spesialis
                 </div>
                 <div class="card-body p-2">
-                    <table class="table table-sm table-borderless mb-0">
-                        <tbody>
-                            <tr><td><span class="badge bg-primary">Matematika</span></td><td class="small text-muted">Aljabar, Kalkulus, Statistik</td></tr>
-                            <tr><td><span class="badge bg-success">Sains</span></td><td class="small text-muted">Fisika, Kimia, Mekanika</td></tr>
-                            <tr><td><span class="badge bg-info text-dark">Bahasa</span></td><td class="small text-muted">Sastra, Tata Bahasa</td></tr>
-                            <tr><td><span class="badge bg-warning text-dark">Informatika</span></td><td class="small text-muted">Algoritma, Pemrograman</td></tr>
-                            <tr><td><span class="badge bg-secondary">Umum</span></td><td class="small text-muted">Pertanyaan Akademik Lain</td></tr>
-                        </tbody>
-                    </table>
+                    <div id="agentsList">Loading agents...</div>
                 </div>
             </div>
 
             <!-- System Status -->
-            <div class="card mt-4">
+            <div class="card">
                 <div class="card-header bg-white text-dark">
                     <i class="bi bi-activity me-1"></i> Status Sistem
                 </div>
@@ -124,14 +121,47 @@
 
         <!-- RIGHT: Chat / Query -->
         <div class="col-lg-7">
-            <div class="card">
+            <!-- Model Selection -->
+            <div class="card mb-4">
+                <div class="card-header bg-white text-dark">
+                    <i class="bi bi-cpu-fill me-1"></i> Pilih Model Qwen
+                </div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <div class="card model-card border-2 border-primary" id="model15bCard">
+                                <div class="card-body">
+                                    <h6 class="mb-1"><i class="bi bi-brain me-1"></i> Qwen2.5-1.5B-Instruct</h6>
+                                    <p class="small text-muted mb-1">Cepat, hemat sumber daya</p>
+                                    <span class="badge bg-primary">Rekomendasi untuk Umum</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card model-card border-2 border-secondary" id="model3bCard">
+                                <div class="card-body">
+                                    <h6 class="mb-1"><i class="bi bi-lightbulb-fill me-1"></i> Qwen2.5-3B-Instruct</h6>
+                                    <p class="small text-muted mb-1">Lebih akurat, kompleks</p>
+                                    <span class="badge bg-secondary">Rekomendasi untuk Agen Spesialis</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chat Card -->
+            <div class="card mb-4">
                 <div class="card-header bg-white text-dark d-flex justify-content-between align-items-center">
                     <span><i class="bi bi-chat-dots-fill me-1"></i> Tanya Asisten Akademik</span>
-                    <div>
+                    <div class="d-flex gap-3">
                         <div class="form-check form-switch form-check-inline mb-0">
                             <input class="form-check-input" type="checkbox" id="useAgent" checked>
                             <label class="form-check-label small" for="useAgent">Multi-Agent</label>
                         </div>
+                        <button class="btn btn-sm btn-outline-primary" onclick="compareModels()">
+                            <i class="bi bi-arrow-left-right"></i> Bandingkan Kedua Model
+                        </button>
                     </div>
                 </div>
                 <div class="card-body">
@@ -154,8 +184,27 @@
                 </div>
             </div>
 
+            <!-- Comparison Results -->
+            <div class="card mb-4" id="comparisonCard" style="display: none;">
+                <div class="card-header bg-white text-dark">
+                    <i class="bi bi-bar-chart-fill me-1"></i> Perbandingan Kedua Model
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="text-primary"><i class="bi bi-brain me-1"></i> Qwen2.5-1.5B-Instruct</h6>
+                            <div id="comparison15b" class="bg-light p-3 rounded"></div>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="text-secondary"><i class="bi bi-lightbulb-fill me-1"></i> Qwen2.5-3B-Instruct</h6>
+                            <div id="comparison3b" class="bg-light p-3 rounded"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Output Format -->
-            <div class="card mt-4">
+            <div class="card">
                 <div class="card-header bg-white text-dark">
                     <i class="bi bi-table me-1"></i> Format Output Konteks
                 </div>
@@ -191,22 +240,90 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
 const API = 'http://localhost:8080';
+let selectedModel = 'qwen2.5-1.5b-instruct';
+let agents = [];
+
+// Initialize on load
+window.addEventListener('load', async () => {
+    checkHealth();
+    await loadAgents();
+    
+    // Model selection click listeners
+    document.getElementById('model15bCard').addEventListener('click', () => selectModel('qwen2.5-1.5b-instruct'));
+    document.getElementById('model3bCard').addEventListener('click', () => selectModel('qwen2.5-3b-instruct'));
+});
+
+// Select model
+function selectModel(modelName) {
+    selectedModel = modelName;
+    const card15b = document.getElementById('model15bCard');
+    const card3b = document.getElementById('model3bCard');
+    
+    if (modelName === 'qwen2.5-1.5b-instruct') {
+        card15b.classList.replace('border-secondary', 'border-primary');
+        card3b.classList.replace('border-primary', 'border-secondary');
+    } else {
+        card3b.classList.replace('border-secondary', 'border-primary');
+        card15b.classList.replace('border-primary', 'border-secondary');
+    }
+}
+
+// Load agents
+async function loadAgents() {
+    try {
+        const res = await fetch(`${API}/agents`);
+        const data = await res.json();
+        agents = data.agents;
+        
+        // Update agent list
+        const agentsListEl = document.getElementById('agentsList');
+        const docAgentEl = document.getElementById('docAgent');
+        
+        agentsListEl.innerHTML = '<div class="list-group list-group-flush small">' + 
+            agents.map(agent => `
+                <div class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>${agent.role}</strong>
+                        <p class="mb-0 text-muted small">${agent.task}</p>
+                        <span class="badge bg-light text-dark me-1">${agent.model_name}</span>
+                        ${agent.keywords?.map(k => `<span class="badge bg-secondary me-1">${k}</span>`).join('') || ''}
+                    </div>
+                </div>
+            `).join('') + 
+        '</div>';
+        
+        // Update ingest select
+        docAgentEl.innerHTML = '<option value="">Umum (semua agen)</option>' + 
+            agents.map(agent => `<option value="${agent.name}">${agent.role}</option>`).join('');
+            
+    } catch (e) {
+        document.getElementById('agentsList').innerHTML = '<p class="text-danger small mb-0">Gagal memuat agen.</p>';
+    }
+}
 
 // ─── INGEST ─────────────────────────────────────────────────
 async function ingestDocument() {
     const content = document.getElementById('docContent').value.trim();
+    const agentName = document.getElementById('docAgent').value;
     if (!content) return alert('Silakan masukkan konten dokumen.');
+    
     const resultEl = document.getElementById('ingestResult');
     resultEl.innerHTML = '<div class="spinner-border spinner-border-sm text-primary"></div> <small>Mengolah dokumen...</small>';
+    
     try {
         const res = await fetch(`${API}/ingest`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: content, metadata: { source: 'UTB Teknik Informatika' } })
+            body: JSON.stringify({ 
+                content: content, 
+                metadata: { source: 'UTB Teknik Informatika' },
+                agent_name: agentName || null
+            })
         });
         const data = await res.json();
         resultEl.innerHTML = `<div class="alert alert-success py-1 small mb-0">
             <i class="bi bi-check-circle me-1"></i> Dokumen disimpan (ID: ${data.document_id})
+            ${data.agent_name ? ` untuk agen ${agents.find(a => a.name === data.agent_name)?.role}` : ''}
         </div>`;
         document.getElementById('docContent').value = '';
     } catch (e) {
@@ -236,12 +353,13 @@ async function sendQuery() {
 
     document.getElementById('loadingSpinner').style.display = 'block';
     document.getElementById('sendBtn').disabled = true;
+    document.getElementById('comparisonCard').style.display = 'none';
 
     try {
         const endpoint = useAgent ? '/agent/query' : '/query';
         const body = useAgent
-            ? { query: query, format: format }
-            : { query: query, format: format };
+            ? { query: query, format: format, model: selectedModel }
+            : { query: query, format: format, model: selectedModel };
 
         const res = await fetch(`${API}${endpoint}`, {
             method: 'POST',
@@ -252,6 +370,7 @@ async function sendQuery() {
 
         // Agent badge
         let agentInfo = '';
+        let modelInfo = `<span class="badge bg-dark text-white me-1">${data.model || selectedModel}</span>`;
         if (data.routed_to) {
             const agentNames = {
                 math_expert: '🔢 Matematika',
@@ -261,10 +380,13 @@ async function sendQuery() {
                 general_academic: '📚 Umum'
             };
             agentInfo = `<span class="badge bg-light text-dark agent-badge me-1">${agentNames[data.routed_to] || data.routed_to}</span>`;
+            if (data.agent) {
+                modelInfo = `<span class="badge bg-dark text-white me-1">${data.agent.model_name}</span>`;
+            }
         }
 
         // AI bubble
-        chatBox.innerHTML += `<div class="d-flex"><div class="chat-bubble chat-ai"><small class="d-block text-muted">${agentInfo}<i class="bi bi-robot"></i> Sovereign AI</small>${escapeHtml(data.answer)}</div></div>`;
+        chatBox.innerHTML += `<div class="d-flex"><div class="chat-bubble chat-ai"><small class="d-block text-muted">${agentInfo}${modelInfo}<i class="bi bi-robot"></i> Sovereign AI</small>${escapeHtml(data.answer)}</div></div>`;
 
         // Show context
         if (data.context_formatted) {
@@ -278,6 +400,34 @@ async function sendQuery() {
     document.getElementById('loadingSpinner').style.display = 'none';
     document.getElementById('sendBtn').disabled = false;
     chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+// ─── COMPARE MODELS ─────────────────────────────────────────
+async function compareModels() {
+    const query = prompt('Masukkan pertanyaan untuk dibandingkan:');
+    if (!query) return;
+
+    document.getElementById('loadingSpinner').style.display = 'block';
+    document.getElementById('sendBtn').disabled = true;
+
+    try {
+        const res = await fetch(`${API}/compare`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        });
+        const data = await res.json();
+        
+        document.getElementById('comparison15b').innerHTML = `<p>${escapeHtml(data['qwen2.5-1.5b-instruct'])}</p>`;
+        document.getElementById('comparison3b').innerHTML = `<p>${escapeHtml(data['qwen2.5-3b-instruct'])}</p>`;
+        document.getElementById('comparisonCard').style.display = 'block';
+        
+    } catch (e) {
+        alert('Gagal membandingkan model: ' + e.message);
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+        document.getElementById('sendBtn').disabled = false;
+    }
 }
 
 // ─── HEALTH CHECK ───────────────────────────────────────────
@@ -303,9 +453,6 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
-
-// Auto-check on load
-window.addEventListener('load', checkHealth);
 </script>
 </body>
 </html>

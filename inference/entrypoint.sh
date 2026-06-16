@@ -1,8 +1,21 @@
 #!/bin/bash
 
-if [ ! -f "$MODEL_PATH" ]; then
-    echo "Downloading model from $MODEL_URL..."
-    curl -L "$MODEL_URL" -o "$MODEL_PATH"
+# Create models directory if it doesn't exist
+mkdir -p /models
+
+# Download 1.5B model if not exists
+MODEL_15B_PATH="/models/qwen2.5-1.5b-instruct-q8_0.gguf"
+if [ ! -f "$MODEL_15B_PATH" ]; then
+    echo "Downloading Qwen2.5-1.5B-Instruct model..."
+    curl -L "$MODEL_15B_URL" -o "$MODEL_15B_PATH"
 fi
 
-python3 -m llama_cpp.server --model "$MODEL_PATH" --host 0.0.0.0 --port 8000
+# Download 3B model if not exists
+MODEL_3B_PATH="/models/qwen2.5-3b-instruct-q8_0.gguf"
+if [ ! -f "$MODEL_3B_PATH" ]; then
+    echo "Downloading Qwen2.5-3B-Instruct model..."
+    curl -L "$MODEL_3B_URL" -o "$MODEL_3B_PATH"
+fi
+
+# Start custom inference server
+python3 /app/server.py

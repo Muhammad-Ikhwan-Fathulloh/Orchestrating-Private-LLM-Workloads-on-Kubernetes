@@ -33,8 +33,6 @@ services:
     container_name: qwen_inference
     ports:
       - "8000:8000"
-    environment:
-      MODEL_URL: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/main/qwen2.5-1.5b-instruct-q8_0.gguf"
     volumes:
       - models:/models
 
